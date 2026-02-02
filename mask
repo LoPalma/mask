@@ -1,0 +1,143 @@
+#!/bin/bash
+# mask - Hide files with an untypeable prefix
+
+VERSION="1.1.0"
+MASK_PREFIX=$'\x01'"##"
+MASK_SUFFIX="##"
+
+ALLOW_DIRS=false
+FORCE=false
+UNMASK=false
+
+show_help() {
+    cat << EOF
+Usage: mask [OPTIONS] FILE...
+       mask -u [OPTIONS] FILE...
+
+Temporarily hide files by prefixing them with an untypeable character.
+
+Options:
+  -u, --unmask    Unmask previously masked files
+  -d, --dir       Allow masking directories
+  -f, --force     Do not prompt when overwriting files
+  -v, --version   Show version information
+  -h, --help      Show this help message
+
+Examples:
+  mask myfile.txt
+  mask -u myfile.txt
+  mask -d mydir
+  mask -f myfile.txt
+EOF
+}
+
+confirm_overwrite() {
+    local target="$1"
+
+    if $FORCE; then
+        return 0
+    fi
+
+    read -r -p "Warning: '$target' exists. Overwrite? [y/N] " ans
+    [[ "$ans" == "y" || "$ans" == "Y" ]]
+}
+
+mask_file() {
+    local file="$1"
+    local masked="${MASK_PREFIX}${file}${MASK_SUFFIX}"
+
+    if [[ ! -e "$file" ]]; then
+        echo "Error: $file not found"
+        return 1
+    fi
+
+    if [[ -d "$file" && $ALLOW_DIRS == false ]]; then
+        echo "Error: $file is a directory (use -d to allow)"
+        return 1
+    fi
+
+    if [[ -e "$masked" ]]; then
+        if ! confirm_overwrite "$masked"; then
+            echo "Skipped: $file"
+            return 1
+        fi
+    fi
+
+    mv -f "$file" "$masked"
+    echo "Masked: $file"
+}
+
+unmask_file() {
+    local file="$1"
+    local masked="${MASK_PREFIX}${file}${MASK_SUFFIX}"
+
+    if [[ ! -e "$masked" ]]; then
+        echo "Error: $file is not masked"
+        return 1
+    fi
+
+    if [[ -e "$file" ]]; then
+        if ! confirm_overwrite "$file"; then
+            echo "Skipped: $file"
+            return 1
+        fi
+    fi
+
+    mv -f "$masked" "$file"
+    echo "Unmasked: $file"
+}
+
+# Parse options
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -v|--version)
+            echo "mask version $VERSION"
+            echo "Made with love by Leonardo Palma"
+            exit 0
+            ;;
+        -u|--unmask)
+            UNMASK=true
+            shift
+            ;;
+        -d|--dir)
+            ALLOW_DIRS=true
+            shift
+            ;;
+        -f|--force)
+            FORCE=true
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [[ $# -eq 0 ]]; then
+    echo "Error: No files specified"
+    echo "Use 'mask --help' for usage information"
+    exit 1
+fi
+
+# Process files
+if $UNMASK; then
+    for file in "$@"; do
+        unmask_file "$file"
+    done
+else
+    for file in "$@"; do
+        mask_file "$file"
+    done
+fi
